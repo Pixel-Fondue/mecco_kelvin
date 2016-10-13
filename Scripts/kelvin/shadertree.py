@@ -10,7 +10,8 @@ def build_material(
         parent = None,
         name = None,
         overrides={},
-        preset=None
+        preset=None,
+        shader=False
         ):
 
     """Builds a material in the shader tree, including a mask, material, and shader with default settings.
@@ -35,6 +36,9 @@ def build_material(
 
     :param preset: path to modo preset file (.lxp)
     :type preset: str
+
+    :param shader: include shader in material group
+    :type shader: bool
     """
 
     scene = modo.Scene()
@@ -58,11 +62,12 @@ def build_material(
     if preset:
         pass
 
-    else:
-        sname = ' '.join([name,symbols.SHADERNAME]) if name else None
-        channels = d['shader_channels']
-        shdr = add_shader(sname,channels)
-        shdr.setParent(mask)
+    if not preset:
+        if(shader):
+            sname = ' '.join([name,symbols.SHADERNAME]) if name else None
+            channels = d['shader_channels']
+            shdr = add_shader(sname,channels)
+            shdr.setParent(mask)
 
         mname = ' '.join([name,symbols.MATNAME]) if name else None
         channels = d['material_channels']
@@ -321,140 +326,190 @@ def add_environment(name=None,channels={}):
         m.channel(k).set(v)
     return m
 
+def move_to_base_shader(items, above_base_shader=False):
+    """Places supplied item(s) above or below Base Shader as appropriate.
+
+    :param items: Item(s) to re-order
+    :type items: modo.item.Item() object or list of the same
+
+    :param above_base_shader: True if index should be above Base Shader (default: False)
+    :type above_base_shader: bool"""
+
+    if not isinstance(items,list):
+        items = [items]
+
+    for n, i in enumerate(modo.Scene().renderItem.children()):
+    	if i.type == 'defaultShader':
+    		target_index = n - 1
+
+    if above_base_shader:
+    	for n, i in enumerate(modo.Scene().renderItem.children()):
+    		print n, i.name
+    		if i.type == 'mask':
+    			target_index = n if n > target_index else target_index + 1
+
+    for item in items:
+        item.setParent(modo.Scene().renderItem, target_index)
+        return target_index
 
 def cleanup():
-    """Whip that shader tree into shape!
-    kelvin imposes a strict shader tree structure for usability and automation.
-    This function runs every time we do anything with the ST to maintain order in the universe.
-
-    - Adds HDR and Backplate environments if they don't already exist, and deletes any other environments
-    - Adds root level groups for item masks, group masks, polygon tag masks, etc
-    - Moves all existing masks to the appropriate root level groups above
-    - Removes empty masks groups (except the root ones above)
-    - Removes mask groups for unused ptags
-    - Removes mask groups that don't mask anything (except the root ones above)
-    - Completely ignores anything inside an "ignore" group at the root level (for advanced users)
-
-    Note: kelvin puts everything above the Base Shader, thereby requiring that all materials have a
-    dedicated Shader at the top. If a mask has no shader anywhere in its hierarchy, we'll add one.
-    If it has exactly one shader, we move it to the top. If it has more than one, we delete them
-    all and add a new one at the top to avoid confusion.
-    """
+    """Delete empty groups and unused polytag groups from Shader Tree."""
 
     scene = modo.scene.current()
-
-    for e in reversed(defaults.get_environments()):
-        if not get_environments(e[1]):
-            add_environment(e[1],e[2])
-
-    for n in scene.items(lx.symbol.sITYPE_ENVIRONMENT):
-        if n.name not in [e[1] for e in defaults.get_environments()]:
-            scene.removeItems(n,True)
-
-    for groupName in reversed(defaults.get_mask_groups()):
-
-        if not get_masks(names=groupName):
-            add_mask(name=groupName)
-
-        get_masks(names=groupName)[0].setParent(scene.renderItem)
-        move_to_top(get_masks(names=groupName)[0])
-
-        if groupName == defaults.get_mask_group('base'):
-            mask = get_masks(names=groupName)[0]
-
-            if not mask.children():
-                sname = symbols.BASE_SHADER
-                channels = defaults.get('shader_channels')
-                shdr = add_shader(sname,channels)
-                shdr.setParent(mask)
-
-                mname = symbols.BASE_MATERIAL
-                channels = defaults.get('material_channels')
-                channels[lx.symbol.sICHAN_ADVANCEDMATERIAL_DIFFCOL] = defaults.get('base_material_color')
-                mat = add_material(mname,channels)
-                mat.setParent(mask)
-
 
     hitlist = set()
     for m in scene.iterItems(lx.symbol.sITYPE_MASK):
 
-        if (
-            not m.parent.name == defaults.get_mask_group('ignore')
-            and not m.name in defaults.get_mask_groups()
-            ):
+        if (m.parent.name == defaults.get_mask_group('ignore')):
+            break
 
-            parentName = None
-            i_POLYTAG = symbols.i_POLYTAG(m.channel(lx.symbol.sICHAN_MASK_PTYP).get())
+        # delete empty groups
+        if not m.children():
+            hitlist.add(m)
 
-            if not m.children():
-                hitlist.add(m)
+        i_POLYTAG = symbols.i_POLYTAG(m.channel(lx.symbol.sICHAN_MASK_PTYP).get()) # type of poly tag (material, selection set, etc)
+        sICHAN_MASK_PTAG = m.channel(lx.symbol.sICHAN_MASK_PTAG).get() # poly tag ("myGreatMaterialTag")
 
-            elif (
-                m.channel(lx.symbol.sICHAN_MASK_PTAG).get()
-                and not items.get_layers_by_pTag(
-                    m.channel(lx.symbol.sICHAN_MASK_PTAG).get(),
-                    i_POLYTAG
-                    )
-                ):
-                hitlist.add(m)
-
-            elif lx.symbol.sGRAPH_SHADELOC in m.itemGraphNames:
-
-                maskedItemType = m.itemGraph(lx.symbol.sGRAPH_SHADELOC).forward()[0].type
-
-                if maskedItemType == '':
-                    parentName = defaults.get_mask_group('group')
-
-                elif maskedItemType == lx.symbol.sITYPE_GROUPLOCATOR:
-                    parentName = defaults.get_mask_group('gloc')
-
-                else:
-                    parentName = defaults.get_mask_group('item')
-
-            elif i_POLYTAG == lx.symbol.i_POLYTAG_MATERIAL:
-                parentName = defaults.get_mask_group('ptag')
-
-            elif i_POLYTAG == lx.symbol.i_POLYTAG_PICK:
-                parentName = defaults.get_mask_group('selset')
-
-            elif i_POLYTAG == lx.symbol.i_POLYTAG_PART:
-                parentName = defaults.get_mask_group('part')
-
-            else:
-                hitlist.add(m)
-
-
-            if parentName and not m.parent.name == parentName:
-                m.setParent(get_masks(names=parentName)[0])
-
-
-            shaders = get_shaders(m)
-            if len(shaders) == 0:
-                s = add_shader()
-                s.setParent(m,m.childCount())
-            elif len(shaders) == 1:
-                shaders[0].setParent(m,m.childCount())
-            else:
-                for shader in shaders:
-                    scene.removeItems(shader,True)
-                s = add_shader()
-                s.setParent(m,m.childCount())
-
-
-    for i in scene.renderItem.children():
-        if i.type == lx.symbol.sITYPE_RENDEROUTPUT:
-            i.setParent(get_masks(names=defaults.get_mask_group('output'))[0])
-        elif (
-            i.type == lx.symbol.sITYPE_DEFAULTSHADER
-            or i.type == lx.symbol.sITYPE_ADVANCEDMATERIAL
-            ):
-            scene.removeItems(i)
-
-
-    for m in scene.iterItems(lx.symbol.sITYPE_MASK):
-        if not m.children() and not m.name == defaults.get_mask_group('ignore'):
-                hitlist.add(m)
-
+        # delete obsolete (unused) polytag groups
+        if (sICHAN_MASK_PTAG and not items.get_layers_by_pTag(sICHAN_MASK_PTAG,i_POLYTAG)):
+            hitlist.add(m)
 
     for hit in hitlist:
         scene.removeItems(hit,True)
+
+# def cleanup():
+#     """Whip that shader tree into shape!
+#     kelvin imposes a strict shader tree structure for usability and automation.
+#     This function runs every time we do anything with the ST to maintain order in the universe.
+#
+#     - Adds HDR and Backplate environments if they don't already exist, and deletes any other environments
+#     - Adds root level groups for item masks, group masks, polygon tag masks, etc
+#     - Moves all existing masks to the appropriate root level groups above
+#     - Removes empty masks groups (except the root ones above)
+#     - Removes mask groups for unused ptags
+#     - Removes mask groups that don't mask anything (except the root ones above)
+#     - Completely ignores anything inside an "ignore" group at the root level (for advanced users)
+#
+#     Note: kelvin puts everything above the Base Shader, thereby requiring that all materials have a
+#     dedicated Shader at the top. If a mask has no shader anywhere in its hierarchy, we'll add one.
+#     If it has exactly one shader, we move it to the top. If it has more than one, we delete them
+#     all and add a new one at the top to avoid confusion.
+#     """
+#
+#     scene = modo.scene.current()
+#
+#     for e in reversed(defaults.get_environments()):
+#         if not get_environments(e[1]):
+#             add_environment(e[1],e[2])
+#
+#     for n in scene.items(lx.symbol.sITYPE_ENVIRONMENT):
+#         if n.name not in [e[1] for e in defaults.get_environments()]:
+#             scene.removeItems(n,True)
+#
+#     for groupName in reversed(defaults.get_mask_groups()):
+#
+#         if not get_masks(names=groupName):
+#             add_mask(name=groupName)
+#
+#         get_masks(names=groupName)[0].setParent(scene.renderItem)
+#         move_to_top(get_masks(names=groupName)[0])
+#
+#         if groupName == defaults.get_mask_group('base'):
+#             mask = get_masks(names=groupName)[0]
+#
+#             if not mask.children():
+#                 sname = symbols.BASE_SHADER
+#                 channels = defaults.get('shader_channels')
+#                 shdr = add_shader(sname,channels)
+#                 shdr.setParent(mask)
+#
+#                 mname = symbols.BASE_MATERIAL
+#                 channels = defaults.get('material_channels')
+#                 channels[lx.symbol.sICHAN_ADVANCEDMATERIAL_DIFFCOL] = defaults.get('base_material_color')
+#                 mat = add_material(mname,channels)
+#                 mat.setParent(mask)
+#
+#
+#     hitlist = set()
+#     for m in scene.iterItems(lx.symbol.sITYPE_MASK):
+#
+#         if (
+#             not m.parent.name == defaults.get_mask_group('ignore')
+#             and not m.name in defaults.get_mask_groups()
+#             ):
+#
+#             parentName = None
+#             i_POLYTAG = symbols.i_POLYTAG(m.channel(lx.symbol.sICHAN_MASK_PTYP).get())
+#
+#             if not m.children():
+#                 hitlist.add(m)
+#
+#             elif (
+#                 m.channel(lx.symbol.sICHAN_MASK_PTAG).get()
+#                 and not items.get_layers_by_pTag(
+#                     m.channel(lx.symbol.sICHAN_MASK_PTAG).get(),
+#                     i_POLYTAG
+#                     )
+#                 ):
+#                 hitlist.add(m)
+#
+#             elif lx.symbol.sGRAPH_SHADELOC in m.itemGraphNames:
+#
+#                 maskedItemType = m.itemGraph(lx.symbol.sGRAPH_SHADELOC).forward()[0].type
+#
+#                 if maskedItemType == '':
+#                     parentName = defaults.get_mask_group('group')
+#
+#                 elif maskedItemType == lx.symbol.sITYPE_GROUPLOCATOR:
+#                     parentName = defaults.get_mask_group('gloc')
+#
+#                 else:
+#                     parentName = defaults.get_mask_group('item')
+#
+#             elif i_POLYTAG == lx.symbol.i_POLYTAG_MATERIAL:
+#                 parentName = defaults.get_mask_group('ptag')
+#
+#             elif i_POLYTAG == lx.symbol.i_POLYTAG_PICK:
+#                 parentName = defaults.get_mask_group('selset')
+#
+#             elif i_POLYTAG == lx.symbol.i_POLYTAG_PART:
+#                 parentName = defaults.get_mask_group('part')
+#
+#             else:
+#                 hitlist.add(m)
+#
+#
+#             if parentName and not m.parent.name == parentName:
+#                 m.setParent(get_masks(names=parentName)[0])
+#
+#
+#             shaders = get_shaders(m)
+#             if len(shaders) == 0:
+#                 s = add_shader()
+#                 s.setParent(m,m.childCount())
+#             elif len(shaders) == 1:
+#                 shaders[0].setParent(m,m.childCount())
+#             else:
+#                 for shader in shaders:
+#                     scene.removeItems(shader,True)
+#                 s = add_shader()
+#                 s.setParent(m,m.childCount())
+#
+#
+#     for i in scene.renderItem.children():
+#         if i.type == lx.symbol.sITYPE_RENDEROUTPUT:
+#             i.setParent(get_masks(names=defaults.get_mask_group('output'))[0])
+#         elif (
+#             i.type == lx.symbol.sITYPE_DEFAULTSHADER
+#             or i.type == lx.symbol.sITYPE_ADVANCEDMATERIAL
+#             ):
+#             scene.removeItems(i)
+#
+#
+#     for m in scene.iterItems(lx.symbol.sITYPE_MASK):
+#         if not m.children() and not m.name == defaults.get_mask_group('ignore'):
+#                 hitlist.add(m)
+#
+#
+#     for hit in hitlist:
+#         scene.removeItems(hit,True)

@@ -127,16 +127,25 @@ def get_active_layers():
 
 
 
-
+# see https://gist.github.com/mattcox/6147502
 def get_all_material_tags():
-    """Returns a list of all material tags in all mesh items in the scene."""
+    ptags = []
 
-    lyr_svc = lx.service.Layer ()
-    scan = lx.object.LayerScan (lyr_svc.ScanAllocate (lx.symbol.f_LAYERSCAN_ALL))
-    if scan.Count () > 0:
-            tags = scan.MeshItem (0)
-    scan.Apply ()
-    return tags
+    scn_svc = lx.service.Scene()
+    scene = lxu.select.SceneSelection().current()
+
+    chan_read = scene.Channels(lx.symbol.s_ACTIONLAYER_EDIT, 0.0)
+    mask_type = scn_svc.ItemTypeLookup(lx.symbol.sITYPE_MASK)
+
+    for i in range (scene.ItemCount(mask_type)):
+        mask = scene.ItemByIndex(mask_type, i)
+
+        if chan_read.String(mask, mask.ChannelLookup(lx.symbol.sICHAN_MASK_PTYP)) == 'Material':
+            ptag_value = chan_read.String(mask, mask.ChannelLookup(lx.symbol.sICHAN_MASK_PTAG))
+            if ptags.count(ptag_value) == 0:
+                ptags.append(ptag_value)
+
+    return ptags
 
 
 
@@ -155,6 +164,29 @@ def get_selected_and_maskable():
     return r
 
 
+def cleanup():
+
+    '''Deletes empty meshes and group locators.'''
+
+    hitlist = set()
+
+    for i in modo.Scene().locators:
+    	if i.type == 'mesh' and not i.geometry.numPolygons:
+    		hitlist.add(i)
+
+    for i in hitlist:
+    	modo.scene.current().removeItems(i)
+
+    # Must run after mesh removal, since it may result in empty group locators.
+
+    hitlist = set()
+    
+    for i in modo.Scene().locators:
+    	if i.type == 'groupLocator' and not i.children():
+    		hitlist.add(i)
+
+    for i in hitlist:
+    	modo.scene.current().removeItems(i)
 
 
 def test_maskable(items):

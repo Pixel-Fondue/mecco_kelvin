@@ -8,14 +8,14 @@ import lxu.command
 import sys
 
 
-VIEW_CMD_NAME = "view3d_artDirector.viewFromItem"
-POPULATE_CMD_NAME = "view3d_artDirector.listItems"
-VIEW_POPUP_NAME = "view3d_artDirector.viewItemPopup"
-SET_RENDER_CAM_UVALUE = "view3d_artDirector.SetRenderCam"
-SHOW_CAM_UVALUE = "view3d_artDirector.ShowCamList"
-SHOW_LGT_UVALUE = "view3d_artDirector.ShowLgtList"
-FIRST_RUN_UVALUE = "view3d_artDirector.FirstRun"
-OVERFLOW_THRESHOLD_UVALUE = "view3d_artDirector.OverflowThreshold"
+VIEW_CMD_NAME = "view3d_kelvin.viewFromItem"
+POPULATE_CMD_NAME = "view3d_kelvin.listItems"
+VIEW_POPUP_NAME = "view3d_kelvin.viewItemPopup"
+SET_RENDER_CAM_UVALUE = "view3d_kelvin.SetRenderCam"
+SHOW_CAM_UVALUE = "view3d_kelvin.ShowCamList"
+SHOW_LGT_UVALUE = "view3d_kelvin.ShowLgtList"
+FIRST_RUN_UVALUE = "view3d_kelvin.FirstRun"
+OVERFLOW_THRESHOLD_UVALUE = "view3d_kelvin.OverflowThreshold"
 
 
 def exclog(script=''):

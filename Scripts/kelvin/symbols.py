@@ -23,6 +23,8 @@ ARGS_MODE = 'mode'
 ARGS_OPERATION = 'operation'
 ARGS_CONNECTED = 'connected'
 ARGS_PRESET = 'preset'
+ARGS_COPY = 'copy'
+ARGS_PASTE = 'paste'
 
 FILTER_TYPES_AUTO = 'auto'
 FILTER_TYPES_MATERIAL = 'material'
@@ -53,6 +55,7 @@ def i_POLYTAG(sICHAN_MASK_PTYP):
     item's lx.symbol.sICHAN_MASK_PTYP channel string."""
 
     return {
+        '':lx.symbol.i_POLYTAG_MATERIAL,
         'Material':lx.symbol.i_POLYTAG_MATERIAL,
         'Selection Set':lx.symbol.i_POLYTAG_PICK,
         'Part':lx.symbol.i_POLYTAG_PART
