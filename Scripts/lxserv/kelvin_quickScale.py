@@ -27,9 +27,17 @@ class CMD_kelvin(lxu.command.BasicCommand):
         try:
             targetSize = self.dyna_Float(0) if self.dyna_IsSet(0) else 1.0
             self.set_last_used(targetSize)
+            lx.eval("item.refSystem")
+            lx.eval("select.typeFrom polygon;edge;vertex;item;pivot;center;ptag true")
+            lx.eval("tool.set actr.origin on")
+
             lx.eval("@absolute.pl grab")
             lx.eval("user.value lux_absolute_size_Uniform %s" % targetSize)
             lx.eval("@absolute.pl scale")
+
+            lx.eval("item.refSystem {}")
+            lx.eval("tool.clearTask axis")
+            lx.eval("select.typeFrom item;pivot;center;edge;polygon;vertex;ptag true")
 
         except:
             traceback.print_exc()
